@@ -1,6 +1,7 @@
 ﻿using MediatR;
 using Microsoft.AspNetCore.Identity;
 using Project_Task_Management.Data.Entities.Identity;
+using Project_Task_Management.Data.Helpers;
 using TaskManager.Core.Bases;
 using TaskManager.Core.Features.Authentication.Commands.Models;
 using TaskManager.Service.Abstracts;
@@ -8,7 +9,7 @@ using TaskManager.Service.Abstracts;
 namespace TaskManager.Core.Features.Authentication.Commands.Handlers
 {
     public class AuthenticationCommandHandler : ResponseHandler,
-        IRequestHandler<SigninCommand, Response<string>>
+        IRequestHandler<SigninCommand, Response<JwtAuthResult>>
     {
         #region Fields
         private readonly UserManager<ApplicationUser> _userManager;
@@ -32,21 +33,21 @@ namespace TaskManager.Core.Features.Authentication.Commands.Handlers
         #endregion
 
         #region Handle Functions
-        public async Task<Response<string>> Handle(SigninCommand request, CancellationToken cancellationToken)
+        public async Task<Response<JwtAuthResult>> Handle(SigninCommand request, CancellationToken cancellationToken)
         {
 
             // 1. Check if the user exists by username
             var user = await _userManager.FindByNameAsync(request.UserName);
             if (user == null)
             {
-                return BadRequest<string>("User Name Is Not Exist");
+                return BadRequest<JwtAuthResult>("User Name Is Not Exist");
             }
 
             // 2. Validate the password using SignInManager        
             var result = await _signInManager.CheckPasswordSignInAsync(user, request.Password, lockoutOnFailure: false);
             if (!result.Succeeded)
             {
-                return BadRequest<string>("Password Not Correct");
+                return BadRequest<JwtAuthResult>("Password Not Correct");
             }
 
             // 3 Generate your JWT Token 
@@ -54,7 +55,7 @@ namespace TaskManager.Core.Features.Authentication.Commands.Handlers
             // 4. Return successful response using your base ResponseHandler method
             if (AccessToken == null)
             {
-                return BadRequest<string>("Token Not Generated");
+                return BadRequest<JwtAuthResult>("Token Not Generated");
             }
             return Success(AccessToken);
 

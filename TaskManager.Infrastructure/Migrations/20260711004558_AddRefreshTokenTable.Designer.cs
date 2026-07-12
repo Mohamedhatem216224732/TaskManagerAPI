@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TaskManager.Infrastructure.Data;
 
@@ -11,9 +12,11 @@ using TaskManager.Infrastructure.Data;
 namespace TaskManager.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260711004558_AddRefreshTokenTable")]
+    partial class AddRefreshTokenTable
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -231,14 +234,14 @@ namespace TaskManager.Infrastructure.Migrations
                         {
                             Id = 1,
                             AccessFailedCount = 0,
-                            ConcurrencyStamp = "93a2a4e6-3c6a-4e21-bfa5-b6a71b5b5389",
+                            ConcurrencyStamp = "2286d424-f38b-4a52-86dc-744c62c2704a",
                             Email = "dev@taskmanager.com",
                             EmailConfirmed = true,
                             FullName = "",
                             LockoutEnabled = false,
                             NormalizedEmail = "DEV@TASKMANAGER.COM",
                             NormalizedUserName = "DEV_USER",
-                            PasswordHash = "AQAAAAIAAYagAAAAEJTYCIxKbfF+sTlBSxqL6Sf4hZuPz13K+glqJaHBwV7VUPzhN7WfHL0wkQlGLpfvUg==",
+                            PasswordHash = "AQAAAAIAAYagAAAAEDPLZWzaKHCs/N8/yhy2IIsihq5O7XLeTPtEiZiZ1LnWlNatEAlb0BuCOmyBP6kYxg==",
                             PhoneNumberConfirmed = false,
                             SecurityStamp = "STATIC_SECURITY_STAMP_VALUE_12345",
                             TwoFactorEnabled = false,
@@ -267,9 +270,6 @@ namespace TaskManager.Infrastructure.Migrations
                         .HasColumnType("bit");
 
                     b.Property<string>("JwtId")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("RefershToken")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("Token")
@@ -453,7 +453,7 @@ namespace TaskManager.Infrastructure.Migrations
             modelBuilder.Entity("Project_Task_Management.Data.Entities.Identity.UserRefreshToken", b =>
                 {
                     b.HasOne("Project_Task_Management.Data.Entities.Identity.ApplicationUser", "user")
-                        .WithMany("UserRefreshToken")
+                        .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -486,8 +486,6 @@ namespace TaskManager.Infrastructure.Migrations
             modelBuilder.Entity("Project_Task_Management.Data.Entities.Identity.ApplicationUser", b =>
                 {
                     b.Navigation("Projects");
-
-                    b.Navigation("UserRefreshToken");
                 });
 
             modelBuilder.Entity("Project_Task_Management.Data.Entities.Project", b =>

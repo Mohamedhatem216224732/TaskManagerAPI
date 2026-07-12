@@ -13,6 +13,7 @@ namespace TaskManager.Infrastructure
             services.AddTransient<ITaskManagerRepository, ProjectRepository>();
             services.AddTransient<ITaskRepository, TaskRepository>();
             services.AddTransient(typeof(IGenericRepositoryAsync<>), typeof(GenericRepositoryAsync<>));
+            services.AddTransient<IRefershTokenRepository, RefershTokenRepository>();
             return services;
         }
     }
