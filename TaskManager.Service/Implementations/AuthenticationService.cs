@@ -32,40 +32,25 @@ namespace TaskManager.Service.Implementations
         #region Functions
         public async Task<JwtAuthResult> GetJWTToken(ApplicationUser user)
         {
-            var claims = GetClaims(user);
-
-            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.Secret));
-            var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-            var now = DateTime.UtcNow;
-            var tokenDescriptor = new SecurityTokenDescriptor
-            {
-                Subject = new ClaimsIdentity(claims),
-                NotBefore = now,
-                Expires = now.AddMinutes(_jwtSettings.AccessTokenExpireDate),
-                SigningCredentials = creds,
-                Issuer = _jwtSettings.Issuer,
-                Audience = _jwtSettings.Audience
-            };
-
-            var tokenHandler = new JwtSecurityTokenHandler();
-            var token = tokenHandler.CreateToken(tokenDescriptor);
-            var accessTokenString = tokenHandler.WriteToken(token);
+            // Call the helper exactly once and deconstruct the tuple
+            var (jwtToken, accessTokenString) = GenerateJWTTokenDescriptor(user);
 
             var refreshToken = GetRefreshToken(user.UserName);
+
             var userRefreshToken = new UserRefreshToken
             {
                 AddedTime = DateTime.UtcNow,
                 ExpiryDate = refreshToken?.ExpireAt ?? DateTime.UtcNow.AddDays(_jwtSettings.RefreshTokenExpireDate),
                 IsRevoked = false,
-                IsUsed = false,
-                JwtId = token.Id,
+                IsUsed = false, // Note: Set to false initially so it can be verified/used later
+                JwtId = jwtToken.Id, // Accessible now because jwtToken is a valid JwtSecurityToken
                 RefershToken = refreshToken?.TokenString ?? string.Empty,
                 Token = accessTokenString,
                 UserId = user.Id
-
             };
-            var RefreshToken = await _refreshTokenRepository.AddAsync(userRefreshToken);
-            if (RefreshToken == null)
+
+            var savedRefreshToken = await _refreshTokenRepository.AddAsync(userRefreshToken);
+            if (savedRefreshToken == null)
             {
                 throw new Exception("Failed to save refresh token.");
             }
@@ -75,6 +60,19 @@ namespace TaskManager.Service.Implementations
                 AccessToken = accessTokenString,
                 RefreshToken = refreshToken
             };
+        }
+
+        private async Task<(JwtSecurityToken, string)> GenerateJWTToken(ApplicationUser user)
+        {
+            var claims = GetClaims(user);
+            var jwtToken = new JwtSecurityToken(
+                _jwtSettings.Issuer,
+                _jwtSettings.Audience,
+                claims,
+                expires: DateTime.Now.AddDays(_jwtSettings.AccessTokenExpireDate),
+                signingCredentials: new SigningCredentials(new SymmetricSecurityKey(Encoding.ASCII.GetBytes(_jwtSettings.Secret)), SecurityAlgorithms.HmacSha256Signature));
+            var accessToken = new JwtSecurityTokenHandler().WriteToken(jwtToken);
+            return (jwtToken, accessToken);
         }
 
         private string GenerateRefreshToken()
@@ -108,11 +106,127 @@ namespace TaskManager.Service.Implementations
             new Claim(nameof(UserClaimModel.Id), user.Id.ToString()),
             new Claim(nameof(UserClaimModel.UserName), user.UserName ?? string.Empty),
             new Claim(nameof(UserClaimModel.Email), user.Email ?? string.Empty),
+            new Claim(nameof(UserClaimModel.PhoneNumber), user.PhoneNumber ?? string.Empty)
         };
 
             return claims;
         }
 
+
+        private (JwtSecurityToken TokenObject, string TokenString) GenerateJWTTokenDescriptor(ApplicationUser user)
+        {
+            var claims = GetClaims(user);
+
+            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.Secret));
+            var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+            var now = DateTime.UtcNow;
+
+            if (!claims.Any(c => c.Type == JwtRegisteredClaimNames.Jti))
+            {
+                claims.Add(new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()));
+            }
+
+            var tokenDescriptor = new SecurityTokenDescriptor
+            {
+                Subject = new ClaimsIdentity(claims),
+                NotBefore = now,
+                Expires = now.AddMinutes(_jwtSettings.AccessTokenExpireDate),
+                SigningCredentials = creds,
+                Issuer = _jwtSettings.Issuer,
+                Audience = _jwtSettings.Audience
+            };
+
+            var tokenHandler = new JwtSecurityTokenHandler();
+            var securityToken = tokenHandler.CreateToken(tokenDescriptor) as JwtSecurityToken;
+
+            if (securityToken == null)
+            {
+                throw new Exception("Failed to create JwtSecurityToken instance.");
+            }
+
+            var accessTokenString = tokenHandler.WriteToken(securityToken);
+
+            return (securityToken, accessTokenString);
+        }
+
+        public async Task<JwtAuthResult> GetRefreshToken(ApplicationUser user, JwtSecurityToken jwtToken, DateTime? expiryDate, string refreshToken)
+        {
+            var (jwtSecurityToken, newToken) = await GenerateJWTToken(user);
+            var response = new JwtAuthResult();
+            response.AccessToken = newToken;
+            var refreshTokenResult = new RefreshToken();
+            refreshTokenResult.UserName = jwtToken.Claims.FirstOrDefault(x => x.Type == nameof(UserClaimModel.UserName)).Value;
+            refreshTokenResult.TokenString = refreshToken;
+            refreshTokenResult.ExpireAt = (DateTime)expiryDate;
+            // response.refreshToken = refreshTokenResult;
+            return response;
+
+        }
+        public JwtSecurityToken ReadJWTToken(string accessToken)
+        {
+            if (string.IsNullOrEmpty(accessToken))
+            {
+                throw new ArgumentNullException(nameof(accessToken));
+            }
+            var handler = new JwtSecurityTokenHandler();
+            var response = handler.ReadJwtToken(accessToken);
+            return response;
+        }
+
+        public async Task<string> ValidateToken(string accessToken)
+        {
+            var handler = new JwtSecurityTokenHandler();
+            var parameters = new TokenValidationParameters
+            {
+                ValidateIssuer = _jwtSettings.ValidateIssuer,
+                ValidIssuers = new[] { _jwtSettings.Issuer },
+                ValidateIssuerSigningKey = _jwtSettings.ValidateIssuerSigningKey,
+                IssuerSigningKey = new SymmetricSecurityKey(Encoding.ASCII.GetBytes(_jwtSettings.Secret)),
+                ValidAudience = _jwtSettings.Audience,
+                ValidateAudience = _jwtSettings.ValidateAudience,
+                //ValidateLifetime = _jwtSettings.ValidateLifeTime,
+            };
+            try
+            {
+                var validator = handler.ValidateToken(accessToken, parameters, out SecurityToken validatedToken);
+
+                if (validator == null)
+                {
+                    return "InvalidToken";
+                }
+
+                return "NotExpired";
+            }
+            catch (Exception ex)
+            {
+                return ex.Message;
+            }
+        }
+
+        public Task<(string, DateTime?)> ValidateDetails(JwtSecurityToken jwtToken, string AccessToken, string RefreshToken)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<string> ConfirmEmail(int? userId, string? code)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<string> SendResetPasswordCode(string Email)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<string> ConfirmResetPassword(string Code, string Email)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<string> ResetPassword(string Email, string Password)
+        {
+            throw new NotImplementedException();
+        }
 
 
 

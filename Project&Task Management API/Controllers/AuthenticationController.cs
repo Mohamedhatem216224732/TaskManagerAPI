@@ -17,5 +17,12 @@ namespace Project_Task_Management_API.Controllers
             return NewResult(response);
         }
 
+        [HttpPost(AuthenticationRouting.RefreshToken)]
+        public async Task<IActionResult> RefreshToken([FromForm] RefreshTokenCommand command)
+        {
+            var response = await Mediator.Send(command);
+            return NewResult(response);
+        }
+
     }
 }
